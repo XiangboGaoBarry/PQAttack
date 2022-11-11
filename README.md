@@ -8,6 +8,13 @@
   <img src="paper_image/Comparsion.png">
 </p>
 
+### Dependencies
+- Python 3.8
+- Pytorch
+- Pillow
+- opencv-python
+- tqdm
+- matplotlib
 
 ### Cross model transferability
 - Point `data_path` to the ImageNet validation set.
