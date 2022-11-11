@@ -36,7 +36,6 @@ def center_crop(t):
 
 parser = argparse.ArgumentParser(description="Implementation of PQAttack.")
 
-# /home/bar/xb/dataset/imagenet/val
 parser.add_argument('--data_path', type=str, default="path/to/imagenet/val")
 parser.add_argument('--dataset', type=str, default="imagenet")
 parser.add_argument('--load_path', type=str, default="models/pretrained/nz128")
