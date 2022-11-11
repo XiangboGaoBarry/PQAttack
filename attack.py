@@ -96,7 +96,7 @@ attacker = PQGAN_attacker(batch_size=1,
                          args=args, 
                          pattern_size=args.image_size)
 depth_predicter = DepthPrediction()
-rain_synthesizer = RainSynthesisDepth(alpha=0.015, beta=0.04, r_r=2, a=0.9)
+rain_synthesizer = RainSynthesisDepth(alpha=0.02, beta=0.04, r_r=2, a=0.9)
 
 imagenet = ImageFolderWithPath(
             args.data_path,
