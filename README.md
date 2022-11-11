@@ -1,11 +1,11 @@
 # PQAttack
 
 <p align="center">
-  <img src="paper_image/PQGAN_Flow.pdf">
+  <img src="paper_image/PQAttack.png">
 </p>
 
 <p align="center">
-  <img src="paper_image/patterns.pdf">
+  <img src="paper_image/Comparsion.png">
 </p>
 
 
