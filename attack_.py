@@ -185,6 +185,4 @@ for idx, (image, label, filepath) in pbar:
     else:
         pbar.set_description(f"White Box ACC: Before Attack: {round((1 - succ_clean_count/(idx+1)) * 100, 2)}%, After Attack: {round((1 - succ_count/(idx+1)) * 100, 2)}%")
 
-# print("Attack Success Rate:", succ_count/idx)
-
 
