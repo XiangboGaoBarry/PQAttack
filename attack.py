@@ -3,10 +3,10 @@ import argparse
 import os
 from PIL import Image
 import torch
-from torchvision.models import resnet18, resnet50
+from torchvision.models import resnet18, resnet50, vgg19, inception_v3, mobilenet_v3_small
 from torchvision.transforms import ToTensor, Normalize, ToPILImage
 from utils.depth_prediction import DepthPrediction
-from utils.rain_synthesis import RainSynthesisDepth
+from utils.rain_synthesis import RainSynthesis
 from torchvision.datasets import ImageNet, ImageFolder
 from torch.utils.data import DataLoader
 from torchvision.transforms import ToTensor, Normalize, Resize, Compose
@@ -20,8 +20,6 @@ from utils.utils import ImageFolderWithPath
 
 normalize = Normalize(mean=[0.485, 0.456, 0.406],
                                 std=[0.229, 0.224, 0.225])
-inv_normalize = Normalize(mean=[1/0.485, 1/0.456, 1/0.406],
-                                std=[1/0.229, 1/0.224, 1/0.225])
 
 def save_adv_img(img, save_dir, name):
     img.shape
@@ -85,8 +83,11 @@ classifier = to_device(resnet18(pretrained=True))
 classifier.eval()
 
 if args.black_box:
-    black_box_classifier = to_device(resnet50(pretrained=True))
-    black_box_classifier.eval()
+    bb_cls_names = ['resnet50', 'vgg19', 'inception_v3', 'mobilenet_v3_small']
+    black_box_classifiers = []
+    for bb_cls_name in bb_cls_names:
+        black_box_classifiers.append(to_device(eval(bb_cls_name)(pretrained=True)))
+        black_box_classifiers[-1].eval()
 
 attacker = PQGAN_attacker(batch_size=1, 
                          img_size=args.image_size, 
@@ -95,7 +96,8 @@ attacker = PQGAN_attacker(batch_size=1,
                          args=args, 
                          pattern_size=args.image_size)
 depth_predicter = DepthPrediction()
-rain_synthesizer = RainSynthesisDepth(alpha=0.02, beta=0.04, r_r=2, a=0.9)
+rain_synthesizer = RainSynthesis(alpha=0.03, beta=0.04, r_r=2, a=1)
+# rain_synthesizer = RainSynthesis(alpha=0.03, beta=0.04, r_r=2, a=1)
 
 imagenet = ImageFolderWithPath(
             args.data_path,
@@ -106,8 +108,9 @@ imagenet = ImageFolderWithPath(
 imagenet_loader = DataLoader(imagenet, shuffle=True)
 succ_count = 0
 succ_clean_count = 0
-bb_succ_count = 0
-bb_succ_clean_count = 0
+bb_succ_counts = [0, 0, 0, 0, 0]
+bb_succ_clean_counts = [0, 0, 0, 0, 0]
+
 resizer = Resize((256,256))
 
 pbar = tqdm(enumerate(imagenet_loader), total=5000)
@@ -134,17 +137,16 @@ for idx, (image, label, filepath) in pbar:
     outputs = classifier(center_crop(normalize(resizer(syn_img))))
     pred_clean = torch.argmax(outputs)
     succ_clean = pred_clean.item() != gt
-    
-    if args.black_box:
-        outputs = black_box_classifier(center_crop(normalize(resizer(syn_img))))
-        bb_pred_clean = torch.argmax(outputs)
-        bb_succ_clean = bb_pred_clean.item() != gt
-
     if succ_clean:
         succ_clean_count += 1
-
-    if args.black_box and bb_succ_clean:
-        bb_succ_clean_count += 1
+    
+    if args.black_box:
+        for i, bb_classifier in enumerate(black_box_classifiers):
+            outputs = bb_classifier(center_crop(normalize(resizer(syn_img))))
+            bb_pred_clean = torch.argmax(outputs)
+            bb_succ_clean = bb_pred_clean.item() != gt
+            if bb_succ_clean:
+                bb_succ_clean_counts[i] += 1
 
     for iter_i in range(args.iters):
         rain_pattern = attacker.generate_pattern()
@@ -163,24 +165,29 @@ for idx, (image, label, filepath) in pbar:
         succ_count += 1
 
     if args.black_box:
-        outputs = black_box_classifier(center_crop(normalize(resizer(syn_img))))
-        bb_prediction = torch.argmax(outputs)
-        if bb_prediction.item() != gt:
-            bb_succ_count += 1
+        for i, bb_classifier in enumerate(black_box_classifiers):
+            outputs = bb_classifier(center_crop(normalize(resizer(syn_img))))
+            bb_pred = torch.argmax(outputs)
+            bb_succ = bb_pred.item() != gt
+            if bb_succ:
+                bb_succ_counts[i] += 1
 
     if args.save_results:
         image_path = os.path.join(args.save_path, args.dataset)
         if not os.path.isdir(image_path): os.mkdir(image_path)
         save_adv_img(syn_img, image_path, filename)
         with open(os.path.join(args.save_path, "meta.txt"), "a") as f:
-            if args.black_box:
-                f.write(f"{filename} {gt} {pred_clean} {prediction} {bb_pred_clean} {bb_prediction}\n")
-            else:
-                f.write(f"{filename} {gt} {pred_clean} {prediction}\n")
+            # if args.black_box:
+                # f.write(f"{filename} {gt} {pred_clean} {prediction} {bb_pred_clean} {bb_prediction}\n")
+            # else:
+            f.write(f"{filename} {gt} {pred_clean} {prediction}\n")
 
     if args.black_box:
-        pbar.set_description(f"White Box ACC: Before Attack: {round((1 - succ_clean_count/(idx+1)) * 100, 2)}%, After Attack: {round((1 - succ_count/(idx+1)) * 100, 2)}% "
-        f"| White Box ACC: Before Attack: {round((1 - bb_succ_clean_count/(idx+1)) * 100, 2)}%, After Attack: {round((1 - bb_succ_count/(idx+1)) * 100, 2)}%")
+        log = f"W: Before: {round((1 - succ_clean_count/(idx+1)) * 100, 2)}%, After: {round((1 - succ_count/(idx+1)) * 100, 2)}% "
+        log += "| B: "
+        for i, bb_cls_name in enumerate(bb_cls_names):
+            log += f"{bb_cls_name}: Before: {round((1 - bb_succ_clean_counts[i]/(idx+1)) * 100, 2)}%, After: {round((1 - bb_succ_counts[i]/(idx+1)) * 100, 2)}% "
+        pbar.set_description(log)
     else:
         pbar.set_description(f"White Box ACC: Before Attack: {round((1 - succ_clean_count/(idx+1)) * 100, 2)}%, After Attack: {round((1 - succ_count/(idx+1)) * 100, 2)}%")
 
