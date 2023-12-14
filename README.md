@@ -1,5 +1,8 @@
 # PQAttack
 
+### Updates (Dec. 12, 2023)
+The paper has been accepted to ICASSP 2024!!
+
 <p align="center">
   <img src="paper_image/PQAttack.png">
 </p>
